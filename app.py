@@ -47,7 +47,6 @@ AlexNet_model.compile(loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
 GoogleNet_model = load_model('model/GoogleNet.hdf5')
-print(GoogleNet_model.layers[-2].name)
 model_extract_feature = Model(GoogleNet_model.input, GoogleNet_model.get_layer(GoogleNet_model.layers[-2].name).output)
 svm_model = joblib.load('model/SVMmodel.pkl')
 
@@ -105,11 +104,11 @@ def GoogLeNet():
     with graph.as_default():
       set_session(sess)
       feature = model_extract_feature.predict(np.expand_dims(img,axis=0))
-      result_return = svm_model.predict(feature)
-
+      result_return = svm_model.predict_proba(feature)
+    max_index = np.argmax(result_return[0])
     #save_img(result,predict_img)
     #cv2.imwrite(result,img)
-    return jsonify({'Class': class_mapping[result_return[0]], 'Prob': float(100)})
+    return jsonify({'Class': class_mapping[max_index], 'Prob': float(result_return[0][max_index]*100)})
 
 @app.route("/AlexNet", methods=['POST'])
 def AlexNet():
