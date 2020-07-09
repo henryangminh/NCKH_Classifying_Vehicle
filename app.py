@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 import tensorflow as tf
 from tensorflow.python.keras.backend import set_session
 from keras.models import Model, model_from_json
-from keras.optimizers import Adam
+from keras.optimizers import Adam, SGD
 from keras.models import load_model
 from keras.preprocessing.image import load_img, img_to_array, save_img
 from sklearn.svm import SVC
@@ -38,14 +38,21 @@ class MyCustomUnpickler(pickle.Unpickler):
 sess = tf.Session()
 set_session(sess)
 with open("model/AlexNet.json", "r") as json_file:
-    model_json = json_file.read()
-    AlexNet_model = model_from_json(model_json)
+    AlexNet_json = json_file.read()
+    AlexNet_model = model_from_json(AlexNet_json)
 AlexNet_model.load_weights("model/AlexNet_weight.h5")
 AlexNet_model.compile(loss='categorical_crossentropy',
                   optimizer=Adam(),
                   metrics=['accuracy'])
 
-GoogleNet_model = load_model('model/GoogleNet.hdf5')
+with open("model/GoogleNet.json", "r") as json_file:
+    GoogleNet_json = json_file.read()
+    GoogleNet_model = model_from_json(GoogleNet_json)
+GoogleNet_model.load_weights("model/GoogleNet_weight.h5")
+GoogleNet_model.compile(loss='categorical_crossentropy',
+                  optimizer=SGD(lr=0.001,decay=1e-4,momentum=0.9),
+                  metrics=['accuracy'])
+
 model_extract_feature = Model(GoogleNet_model.input, GoogleNet_model.get_layer(GoogleNet_model.layers[-2].name).output)
 svm_model = joblib.load('model/SVMmodel.pkl')
 
