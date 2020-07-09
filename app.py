@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, session, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 import os, shutil
-import cv2
 import numpy as np
 import pandas as pd
 import datetime, time
@@ -106,8 +105,6 @@ def GoogLeNet():
       feature = model_extract_feature.predict(np.expand_dims(img,axis=0))
       result_return = svm_model.predict_proba(feature)
     max_index = np.argmax(result_return[0])
-    #save_img(result,predict_img)
-    #cv2.imwrite(result,img)
     return jsonify({'Class': class_mapping[max_index], 'Prob': float(result_return[0][max_index]*100)})
 
 @app.route("/AlexNet", methods=['POST'])
@@ -133,9 +130,6 @@ def AlexNet():
     img = img.resize(resized_shape)
     img = img_to_array(img)
 
-
-    #save_img(result,predict_img)
-    #cv2.imwrite(result,img)
     with graph.as_default():
       set_session(sess)
       res = AlexNet_model.predict(np.expand_dims(img,axis=0))
