@@ -10,18 +10,59 @@ import warnings
 warnings.filterwarnings('ignore')
 import tensorflow as tf
 from tensorflow.python.keras.backend import set_session
-from keras.models import Model
-from tensorflow.keras.models import load_model
+from keras.models import Model, model_from_json
+from keras.optimizers import Adam
+from keras.models import load_model
 from keras.preprocessing.image import load_img, img_to_array, save_img
-from annoy import AnnoyIndex
-#from my_model import *
-from ultility.config import *
-from ultility.prepare_data import *
-from ultility.ultility import *
+from sklearn.svm import SVC
+from sklearn.externals import joblib
 
 APP_NAME = "flask_app"
 UPLOAD_FOLDER = './static/img/upload_images'
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+
+# Change to GPU
+#os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+class_mapping = ['Bus', 'Microbus', 'Minivan', 'SUV', 'Sedan', 'Truck']
+AlexNet_model = None
+GoogleNet_model = None
+svm_model = None
+
+
+class MyCustomUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module == "__main__":
+            module = "flask_app"
+        return super().find_class(module, name)
+
+sess = tf.Session()
+set_session(sess)
+with open("model/AlexNet.json", "r") as json_file:
+    model_json = json_file.read()
+    AlexNet_model = model_from_json(model_json)
+AlexNet_model.load_weights("model/AlexNet_weight.h5")
+AlexNet_model.compile(loss='categorical_crossentropy',
+                  optimizer=Adam(),
+                  metrics=['accuracy'])
+
+GoogleNet_model = load_model('model/GoogleNet.hdf5')
+print(GoogleNet_model.layers[-2].name)
+model_extract_feature = Model(GoogleNet_model.input, GoogleNet_model.get_layer(GoogleNet_model.layers[-2].name).output)
+svm_model = joblib.load('model/SVMmodel.pkl')
+
+
+global graph
+graph = tf.get_default_graph()
+def convertRGBtoBGR(img_arr):
+    ''' OpenCV reads images in BGR format whereas in keras,
+    it is represented in RGB.
+    This function convert img from BGR to RGB and vice versa
+    '''
+    return img_arr[...,::-1]
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 app = Flask("flask_app", static_folder='static')
 # Configure a secret SECRET_KEY
@@ -39,50 +80,68 @@ def index():
 def path():
     return os.getcwd()
 
-@app.route('/prediction')
-def prediction():
-    page = (int)(request.args.get('page'))
-    if page is None:
-        page=1
-    if page > 1:
-        pass
-    else:
-        if current_img is None:
-            return ""
-        img = cv2.imread(current_img)
-        feats = crop_feature(img, verbose=False)
-        max_feat = feats[np.argmax([feats[i][0] for i in range(len(feats))])] # Get feature with the highest prob
-        vehicle_query_result = vehicle_query.get_nns_by_vector(max_feat[1], n=500)
-        result_imgs = featureDB.iloc[vehicle_query_result]['name']
-    return paging(page)
-@app.route("/upload", methods=['POST'])
-def upload():
+@app.route("/GoogLeNet", methods=['POST'])
+def GoogLeNet():
     fileUpload = request.files['files']
-
-    SAVE_PATH = "./static/img/upload_images"
-
-##    #read image file string data
-    filestr = fileUpload.read()
-    #convert string data to numpy array
-    npimg = np.fromstring(filestr, np.uint8)
-    # convert numpy array to image
-    img = cv2.imdecode(npimg, cv2.IMREAD_UNCHANGED)
-##    img = cv2.imread(fileUpload)
-##    img = convertRGBtoBGR(img)
-##    img = cv2.resize(img,(resized_shape[1], resized_shape[0]))
-
-##    predict_img = model.predict(img/255)
-
-    name = (int)(datetime.datetime.utcnow().timestamp())
+    resized_shape = (224, 224)
+    SAVE_PATH = app.config['UPLOAD_FOLDER']
     
     # Create folder if not existed
     if not os.path.exists(SAVE_PATH):
         os.mkdir(SAVE_PATH)
-    result = f"{SAVE_PATH}/{name}.png"
+    name = (int)(datetime.datetime.utcnow().timestamp())
+    saved_img = f"{SAVE_PATH}/{name}.png"
     
+    # if user does not select file, browser also
+    # submit an empty part without filename
+    if fileUpload.filename == '':
+        return "No selected file"
+    if fileUpload and allowed_file(fileUpload.filename):
+        fileUpload.save(saved_img)
+
+    img = load_img(saved_img)
+    img = img.resize(resized_shape)
+    img = img_to_array(img)
+    with graph.as_default():
+      set_session(sess)
+      feature = model_extract_feature.predict(np.expand_dims(img,axis=0))
+      result_return = svm_model.predict(feature)
+
     #save_img(result,predict_img)
-    cv2.imwrite(result,img)
-    return jsonify(search_vehicles(img,euclidean))
+    #cv2.imwrite(result,img)
+    return jsonify({'Class': class_mapping[result_return[0]], 'Prob': float(100)})
+
+@app.route("/AlexNet", methods=['POST'])
+def AlexNet():
+    fileUpload = request.files['files']
+    resized_shape = (64, 64)
+    SAVE_PATH = app.config['UPLOAD_FOLDER']
+    
+    # Create folder if not existed
+    if not os.path.exists(SAVE_PATH):
+        os.mkdir(SAVE_PATH)
+    name = (int)(datetime.datetime.utcnow().timestamp())
+    saved_img = f"{SAVE_PATH}/{name}.png"
+    
+    # if user does not select file, browser also
+    # submit an empty part without filename
+    if fileUpload.filename == '':
+        return "No selected file"
+    if fileUpload and allowed_file(fileUpload.filename):
+        fileUpload.save(saved_img)
+
+    img = load_img(saved_img)
+    img = img.resize(resized_shape)
+    img = img_to_array(img)
+
+
+    #save_img(result,predict_img)
+    #cv2.imwrite(result,img)
+    with graph.as_default():
+      set_session(sess)
+      res = AlexNet_model.predict(np.expand_dims(img,axis=0))
+    clss = np.argmax(res[0])
+    return jsonify({'Class': class_mapping[clss], 'Prob': float(res[0][clss]*100)})
 
 if __name__ == '__main__':
     app.run(debug=True)

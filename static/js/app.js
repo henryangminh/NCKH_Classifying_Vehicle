@@ -25,12 +25,13 @@ function imgPreview(fileInput) {
 
 function Retrieval()
 {
-    $("#result_imgs").html("");
-    $("#count_results").hide();
+    $("#predicted_class").hide();
     var fileUpload = $("#fileInputImg").get(0);
     var files = fileUpload.files;
     var data = new FormData();
     // data.append("function", "loadIMG");
+    var url_des = "/AlexNet";
+    url_des = $("#exampleFormControlSelect1").val();
     if (files.length == 1) {
         for (var i = 0; i < files.length; i++) {
             data.append("files", files[i]);
@@ -38,27 +39,17 @@ function Retrieval()
 
         $.ajax({
             type: "POST",
-            url: "/upload",
+            url: url_des,
             contentType: false,
             processData: false,
             data: data,
             beforeSend: function () {
                 setLoading(true);
             },
-            success: function (path) {
-                var ggD_url = "https://drive.google.com/uc?export=view&id=";
-                console.log(path);
-                var count_rs = path.length;
-                imgs_html = "";
-                for (i = 0; i < path.length; i++) {
-                    imgs_html += "<img class='lazy' width='300' data-src='" + path[i].id + "' />";
-                }
-                $("#count_results").text("Found " + count_rs + " results.");
-                $("#count_results").show();
-                $("#result_imgs").css("height","70vh");
-                $("#result_imgs").css("overflow-y","scroll");
-                $("#result_imgs").append(imgs_html);
-                lazyload(this);
+            success: function (respond) {
+                console.log(respond);
+                $("#predicted_class").text("Predicted class: " + respond['Class'] + "(" + respond['Prob'] + "%)");
+                $("#predicted_class").show();
                 setLoading(false);
             },
             error: function (err) {
@@ -85,45 +76,7 @@ $("#fileInputImg").on('change', function () {
             Retrieval();
 });
 
-$("#btnSubmit").on('click', function () {
-    $("#result_imgs").html("");
-    var fileUpload = $("#fileInputImg").get(0);
-    var files = fileUpload.files;
-    var data = new FormData();
-    // data.append("function", "loadIMG");
-    if (files.length == 1) {
-        for (var i = 0; i < files.length; i++) {
-            data.append("files", files[i]);
-        }
 
-        $.ajax({
-            type: "POST",
-            url: "/upload",
-            contentType: false,
-            processData: false,
-            data: data,
-            beforeSend: function () {
-                setLoading(true);
-            },
-            success: function (path) {
-                var ggD_url = "https://drive.google.com/uc?export=view&id=";
-                console.log(path);
-                imgs_html = "";
-                for (i = 0; i < path.length; i++) {
-                    imgs_html += "<img class='lazy' width='300' data-src='" + path[i].id + "' />";
-                }
-                $("#result_imgs").append(imgs_html);
-                lazyload(this);
-                setLoading(false);
-
-            },
-            error: function (err) {
-                console.log(err);
-                setLoading(false);
-            }
-        });
-    }
-});
 
 function setLoading(isLoading) {
     if (isLoading) {
